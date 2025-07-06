@@ -1,6 +1,6 @@
 DELIMITER $$
 
-CREATE PROCEDURE load_silver()
+CREATE PROCEDURE silver_load_silver()
 BEGIN
   DECLARE start_time DATETIME;
   DECLARE end_time DATETIME;
@@ -8,7 +8,6 @@ BEGIN
   DECLARE batch_end_time DATETIME;
 
   SET batch_start_time = NOW();
-  SELECT 'PROCEDURE STARTED' AS start_msg;
 
   -- Load CRM Customer Info
   SET start_time = NOW();
@@ -48,11 +47,9 @@ BEGIN
   ) AS t
   WHERE flag_last = 1;
   SET end_time = NOW();
-  SELECT CONCAT('>> Duration: ', TIMESTAMPDIFF(SECOND, start_time, end_time), ' seconds') AS duration;
-
+  SELECT CONCAT('>> Duration: ', TIMESTAMPDIFF(SECOND, start_time, end_time), ' seconds') AS message;
 
   -- Load CRM Product Info
-
   SET start_time = NOW();
   SELECT '>> Truncating silver.crm_prd_info' AS message;
   TRUNCATE TABLE silver.crm_prd_info;
@@ -62,60 +59,29 @@ BEGIN
   )
   SELECT 
     prd_id,
-    REPLACE(SUBSTRING(prd_key, 1, 5), '-', '_'),
-    SUBSTRING(prd_key, 7),
+    REPLACE(SUBSTRING(prd_key, 1, 5), '-', '_') AS cat_id,
+    SUBSTRING(prd_key, 7) AS prd_key,
     prd_nm,
-    IFNULL(prd_cost, 0),
+    IFNULL(prd_cost, 0) AS prd_cost,
     CASE 
       WHEN UPPER(TRIM(prd_line)) = 'M' THEN 'Mountain'
       WHEN UPPER(TRIM(prd_line)) = 'R' THEN 'Road'
       WHEN UPPER(TRIM(prd_line)) = 'S' THEN 'Other Sales'
       WHEN UPPER(TRIM(prd_line)) = 'T' THEN 'Touring'
       ELSE 'n/a'
-    END,
-    prd_start_dt,
-    NULL
+    END AS prd_line,
+    CAST(prd_start_dt AS DATE) AS prd_start_dt,
+    CAST(DATE_SUB(LEAD(prd_start_dt) OVER (PARTITION BY prd_key ORDER BY prd_start_dt), INTERVAL 1 DAY) AS DATE) AS prd_end_dt
   FROM bronze.crm_prd_info;
   SET end_time = NOW();
-  SELECT CONCAT('>> Duration: ', TIMESTAMPDIFF(SECOND, start_time, end_time), ' seconds') AS duration;
+  SELECT CONCAT('>> Duration: ', TIMESTAMPDIFF(SECOND, start_time, end_time), ' seconds') AS message;
 
   -- Load CRM Sales Details
-
   SET start_time = NOW();
   SELECT '>> Truncating silver.crm_sales_details' AS message;
   TRUNCATE TABLE silver.crm_sales_details;
   SELECT '>> Inserting into silver.crm_sales_details' AS message;
   INSERT INTO silver.crm_sales_details (
-  sls_ord_num,
-  sls_prd_key,
-  sls_cust_id,
-  sls_order_dt,
-  sls_ship_dt,
-  sls_due_dt,
-  sls_sales,
-  sls_quantity,
-  sls_price
-)
-SELECT 
-  sls_ord_num,
-  sls_prd_key,
-  sls_cust_id,
-  STR_TO_DATE(sls_order_dt, '%Y%m%d'),
-  STR_TO_DATE(sls_ship_dt, '%Y%m%d'),
-  STR_TO_DATE(sls_due_dt, '%Y%m%d'),
-  CASE 
-    WHEN sls_sales IS NULL OR sls_sales <= 0 OR sls_sales != sls_quantity * ABS(sls_price)
-      THEN sls_quantity * ABS(sls_price)
-    ELSE sls_sales
-  END,
-  sls_quantity,
-  CASE 
-    WHEN sls_price IS NULL OR sls_price <= 0 
-      THEN sls_sales / NULLIF(sls_quantity, 0)
-    ELSE sls_price
-  END
-FROM (
-  SELECT 
     sls_ord_num,
     sls_prd_key,
     sls_cust_id,
@@ -125,18 +91,46 @@ FROM (
     sls_sales,
     sls_quantity,
     sls_price
-  FROM bronze.crm_sales_details
-  WHERE 
-    sls_order_dt REGEXP '^[0-9]{8}$' AND sls_order_dt != '00000000'
-    AND sls_ship_dt REGEXP '^[0-9]{8}$' AND sls_ship_dt != '00000000'
-    AND sls_due_dt REGEXP '^[0-9]{8}$' AND sls_due_dt != '00000000'
-) AS filtered;
-SET end_time=NOW();
-SELECT CONCAT('>> Duration: ', TIMESTAMPDIFF(SECOND, start_time, end_time), ' seconds') AS duration;
-
+  )
+  SELECT 
+    sls_ord_num,
+    sls_prd_key,
+    sls_cust_id,
+    STR_TO_DATE(sls_order_dt, '%Y%m%d'),
+    STR_TO_DATE(sls_ship_dt, '%Y%m%d'),
+    STR_TO_DATE(sls_due_dt, '%Y%m%d'),
+    CASE 
+      WHEN sls_sales IS NULL OR sls_sales <= 0 OR sls_sales != sls_quantity * ABS(sls_price)
+        THEN sls_quantity * ABS(sls_price)
+      ELSE sls_sales
+    END,
+    sls_quantity,
+    CASE 
+      WHEN sls_price IS NULL OR sls_price <= 0 
+        THEN sls_sales / NULLIF(sls_quantity, 0)
+      ELSE sls_price
+    END
+  FROM (
+    SELECT 
+      sls_ord_num,
+      sls_prd_key,
+      sls_cust_id,
+      sls_order_dt,
+      sls_ship_dt,
+      sls_due_dt,
+      sls_sales,
+      sls_quantity,
+      sls_price
+    FROM bronze.crm_sales_details
+    WHERE 
+      sls_order_dt REGEXP '^[0-9]{8}$' AND sls_order_dt != '00000000'
+      AND sls_ship_dt REGEXP '^[0-9]{8}$' AND sls_ship_dt != '00000000'
+      AND sls_due_dt REGEXP '^[0-9]{8}$' AND sls_due_dt != '00000000'
+  ) AS filtered;
+  SET end_time = NOW();
+  SELECT CONCAT('>> Duration: ', TIMESTAMPDIFF(SECOND, start_time, end_time), ' seconds') AS message;
 
   -- Load ERP Customer
-
   SET start_time = NOW();
   SELECT '>> Truncating silver.erp_cust_az12' AS message;
   TRUNCATE TABLE silver.erp_cust_az12;
@@ -152,10 +146,9 @@ SELECT CONCAT('>> Duration: ', TIMESTAMPDIFF(SECOND, start_time, end_time), ' se
     END
   FROM bronze.erp_cust_az12;
   SET end_time = NOW();
-  SELECT CONCAT('>> Duration: ', TIMESTAMPDIFF(SECOND, start_time, end_time), ' seconds') AS duration;
+  SELECT CONCAT('>> Duration: ', TIMESTAMPDIFF(SECOND, start_time, end_time), ' seconds') AS message;
 
   -- Load ERP Location
-
   SET start_time = NOW();
   SELECT '>> Truncating silver.erp_loc_a101' AS message;
   TRUNCATE TABLE silver.erp_loc_a101;
@@ -171,10 +164,9 @@ SELECT CONCAT('>> Duration: ', TIMESTAMPDIFF(SECOND, start_time, end_time), ' se
     END
   FROM bronze.erp_loc_a101;
   SET end_time = NOW();
-  SELECT CONCAT('>> Duration: ', TIMESTAMPDIFF(SECOND, start_time, end_time), ' seconds') AS duration;
+  SELECT CONCAT('>> Duration: ', TIMESTAMPDIFF(SECOND, start_time, end_time), ' seconds') AS message;
 
   -- Load ERP Product Categories
-
   SET start_time = NOW();
   SELECT '>> Truncating silver.erp_px_cat_g1v2' AS message;
   TRUNCATE TABLE silver.erp_px_cat_g1v2;
@@ -183,10 +175,12 @@ SELECT CONCAT('>> Duration: ', TIMESTAMPDIFF(SECOND, start_time, end_time), ' se
   SELECT id, cat, subcat, maintenance
   FROM bronze.erp_px_cat_g1v2;
   SET end_time = NOW();
-  SELECT CONCAT('>> Duration: ', TIMESTAMPDIFF(SECOND, start_time, end_time), ' seconds') AS duration;
+  SELECT CONCAT('>> Duration: ', TIMESTAMPDIFF(SECOND, start_time, end_time), ' seconds') AS message;
 
   SET batch_end_time = NOW();
-  SELECT 'PROCEDURE ENDED' AS end_msg;
+  SELECT CONCAT('>> Total Batch Duration: ', TIMESTAMPDIFF(SECOND, batch_start_time, batch_end_time), ' seconds') AS message;
+
 END$$
 
 DELIMITER ;
+
