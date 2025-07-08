@@ -23,7 +23,12 @@ STEP 5: We now moved to silver schema and created table accordingly with the sam
 
 STEP 6: Here, we added an extra metadata column called dwh_create_date in order to have an eye on when was the current data loaded.
 
-STEP 7:
+STEP 7: Before moving tothe gold layer, we need to first check the quality of our data in our silver layer like 
+1. Check for null values.
+2. Check for unwanted spaces in string values.
+3. Check for consistency of values in low cardinality columns,etc
+
+STEP 8: We modelled our data according to the star schema.
 
 
    
