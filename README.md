@@ -28,7 +28,11 @@ STEP 7: Before moving tothe gold layer, we need to first check the quality of ou
 2. Check for unwanted spaces in string values.
 3. Check for consistency of values in low cardinality columns,etc
 
-STEP 8: We modelled our data according to the star schema.
+STEP 8: In the gold layer, we modelled our data according to the star schema.
+
+STEP 9: Perform quality checks on the gold layer data, since NULLS often come after joining tables, etc.
+
+PHASE 2: **Performing advanced SQL-based analysis on the prepared dataset**
 
 
    
