@@ -1,5 +1,5 @@
 SET GLOBAL local_infile = 1;
-USE datawarehouse;
+USE bronze;
 -- Set start time of full batch
 SET @batch_start_time = NOW();
 SELECT '================================================' AS msg;
